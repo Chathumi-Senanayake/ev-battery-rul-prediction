@@ -16,14 +16,12 @@ This module only LOADS and MERGES. Checks/RUL live in preprocessing.py.
 import numpy as np
 import h5py
 
+# Download URLs from the project page
+#   https://data.matr.io/1/projects/5c48dd2bc625d700019f3204
 DOWNLOAD = {
-    # Batch 3 (2018-04-12) URL confirmed from the project page:
-    "batch3": "https://data.matr.io/1/api/v1/file/5c86bd64fa2ede00015ddbb2/download",
-    # Batch 1 (2017-05-12) & Batch 2 (2017-06-30): open the project page
-    #   https://data.matr.io/1/projects/5c48dd2bc625d700019f3204
-    # click each batch, right-click the download button -> "Copy link address".
-    "batch1": "PASTE_BATCH1_DOWNLOAD_URL_HERE",
-    "batch2": "PASTE_BATCH2_DOWNLOAD_URL_HERE",
+    "batch1": "https://data.matr.io/1/api/v1/file/5c86c0b5fa2ede00015ddf66/download",  # 2017-05-12
+    "batch2": "https://data.matr.io/1/api/v1/file/5c86bf13fa2ede00015ddd82/download",  # 2017-06-30
+    "batch3": "https://data.matr.io/1/api/v1/file/5c86bd64fa2ede00015ddbb2/download",  # 2018-04-12
 }
 
 MAT_FILENAMES = {
