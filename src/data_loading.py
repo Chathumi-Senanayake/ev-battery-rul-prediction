@@ -39,8 +39,22 @@ def download_info():
         print(f"!wget -O {MAT_FILENAMES[b]} '{DOWNLOAD[b]}'")
 
 
-def load_batch(mat_path, prefix):
-    """Load one batch .mat (MATLAB v7.3 / HDF5) into a dict keyed b?c0, b?c1 ..."""
+# Per-cycle fields. "lean" keeps only what the curve features need (Qdlin,
+# Tdlin, dQdV on the fixed voltage grid) and drops the big raw 750-sample
+# arrays (I, Qc, Qd, V, T, t) -> ~60% less memory, so all 3 batches fit.
+CYCLE_FIELDS_FULL = [("I", "I"), ("Qc", "Qc"), ("Qd", "Qd"), ("Qdlin", "Qdlin"),
+                     ("T", "T"), ("Tdlin", "Tdlin"), ("V", "V"),
+                     ("dQdV", "discharge_dQdV"), ("t", "t")]
+CYCLE_FIELDS_LEAN = [("Qdlin", "Qdlin"), ("Tdlin", "Tdlin"),
+                     ("dQdV", "discharge_dQdV")]
+
+
+def load_batch(mat_path, prefix, lean=True):
+    """Load one batch .mat (MATLAB v7.3 / HDF5) into a dict keyed b?c0, b?c1 ...
+
+    lean=True (default) keeps summary + curve arrays only (memory-friendly).
+    lean=False keeps every raw per-cycle array (needs much more RAM)."""
+    fields = CYCLE_FIELDS_LEAN if lean else CYCLE_FIELDS_FULL
     f = h5py.File(mat_path, "r")
     batch = f["batch"]
     num_cells = batch["summary"].shape[0]
@@ -61,12 +75,9 @@ def load_batch(mat_path, prefix):
 
         cycles_ref = f[batch["cycles"][i, 0]]
         cycle_dict = {}
-        for j in range(cycles_ref["I"].shape[0]):
-            cd = {}
-            for name, key in [("I", "I"), ("Qc", "Qc"), ("Qd", "Qd"),
-                              ("Qdlin", "Qdlin"), ("T", "T"), ("Tdlin", "Tdlin"),
-                              ("V", "V"), ("dQdV", "discharge_dQdV"), ("t", "t")]:
-                cd[name] = np.hstack(f[cycles_ref[key][j, 0]][()])
+        for j in range(cycles_ref["Qdlin"].shape[0]):
+            cd = {name: np.hstack(f[cycles_ref[key][j, 0]][()]).astype("float32")
+                  for name, key in fields}
             cycle_dict[str(j)] = cd
 
         bat_dict[f"{prefix}c{i}"] = {
