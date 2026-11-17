@@ -42,6 +42,13 @@ def _slope(y):
     return float(np.polyfit(x, y, 1)[0])
 
 
+def _trapz(y, x):
+    """Trapezoidal integral of y over x (version-independent)."""
+    y = np.asarray(y, float)
+    x = np.asarray(x, float)
+    return float(np.sum((y[:-1] + y[1:]) / 2.0 * np.diff(x)))
+
+
 def _valid_curve(c):
     """A cycle's curves are valid if Qdlin in (-0.1,1.3) and Tdlin in (20,60)."""
     q = np.asarray(c["Qdlin"], float)
@@ -63,7 +70,10 @@ def build_summary_features(df):
         refQD = ref["QD"].mean()
         refIR = ref["IR"].mean()
         refTmax = ref["Tmax"].mean()
+        refTavg = ref["Tavg"].mean()
+        refTmin = ref["Tmin"].mean()
         refCT = ref["chargetime"].mean()
+        ref_ce = (ref["QD"] / ref["QC"].replace(0, np.nan)).mean()
 
         # current-state
         g["QD_now"] = g["QD"]
@@ -82,11 +92,19 @@ def build_summary_features(df):
         g["QD_slope10"] = g["QD"].rolling(10, min_periods=3).apply(_slope, raw=True)
         g["QD_slope20"] = g["QD"].rolling(20, min_periods=5).apply(_slope, raw=True)
         g["QD_diff1"] = g["QD"].diff()
+        g["QD_range10"] = (g["QD"].rolling(10, min_periods=3).max()
+                           - g["QD"].rolling(10, min_periods=3).min())
+        g["QD_slope_accel"] = g["QD_slope5"] - g["QD_slope20"]   # fade acceleration (knee)
         g["IR_mean10"] = g["IR"].rolling(10, min_periods=3).mean()
         g["IR_slope10"] = g["IR"].rolling(10, min_periods=3).apply(_slope, raw=True)
+        g["IR_slope20"] = g["IR"].rolling(20, min_periods=5).apply(_slope, raw=True)
+        g["IR_std10"] = g["IR"].rolling(10, min_periods=3).std()
         g["Tavg_mean10"] = g["Tavg"].rolling(10, min_periods=3).mean()
+        g["Tavg_slope10"] = g["Tavg"].rolling(10, min_periods=3).apply(_slope, raw=True)
         g["chargetime_mean10"] = g["chargetime"].rolling(10, min_periods=3).mean()
         g["chargetime_slope10"] = g["chargetime"].rolling(10, min_periods=3).apply(_slope, raw=True)
+        g["ce_slope10"] = g["coulombic_eff"].rolling(10, min_periods=3).apply(_slope, raw=True)
+        g["ce_std10"] = g["coulombic_eff"].rolling(10, min_periods=3).std()
 
         # vs early-life reference
         g["cap_retention"] = g["QD"] / refQD
@@ -94,7 +112,11 @@ def build_summary_features(df):
         g["IR_change"] = g["IR"] - refIR
         g["IR_ratio"] = g["IR"] / refIR if refIR else np.nan
         g["chargetime_change"] = g["chargetime"] - refCT
+        g["chargetime_ratio"] = g["chargetime"] / refCT if refCT else np.nan
         g["Tmax_change"] = g["Tmax"] - refTmax
+        g["Tavg_change"] = g["Tavg"] - refTavg
+        g["Tmin_change"] = g["Tmin"] - refTmin
+        g["ce_change"] = g["coulombic_eff"] - ref_ce
         parts.append(g)
     return pd.concat(parts, ignore_index=True)
 
@@ -105,9 +127,12 @@ def build_summary_features(df):
 def build_curve_features(bat_dict):
     mask = (VGRID >= PEAK_LO) & (VGRID <= PEAK_HI)
     vpeak = VGRID[mask]
+    dV = float(VGRID[1] - VGRID[0])
+    i22 = int(np.argmin(np.abs(VGRID - 2.2)))
     i25 = int(np.argmin(np.abs(VGRID - 2.5)))
     i28 = int(np.argmin(np.abs(VGRID - 2.8)))
     i30 = int(np.argmin(np.abs(VGRID - 3.0)))
+    i32 = int(np.argmin(np.abs(VGRID - 3.2)))
 
     rows = []
     for cell, d in bat_dict.items():
@@ -139,11 +164,18 @@ def build_curve_features(bat_dict):
                     "dQ_mean": float(np.nanmean(dQ)), "dQ_min": float(np.nanmin(dQ)),
                     "dQ_max": float(np.nanmax(dQ)), "dQ_std": float(np.nanstd(dQ)),
                     "dQ_skew": float(skew(dQ, nan_policy="omit")),
-                    "dQ_V25": float(dQ[i25]), "dQ_V28": float(dQ[i28]),
-                    "dQ_V30": float(dQ[i30]),
+                    "dQ_range": float(np.nanmax(dQ) - np.nanmin(dQ)),
+                    "dQ_integral": float(_trapz(dQ, VGRID)),       # total capacity shift
+                    "dQ_argminV": float(VGRID[int(np.nanargmin(dQ))]),  # voltage of worst fade
+                    "dQ_V22": float(dQ[i22]), "dQ_V25": float(dQ[i25]),
+                    "dQ_V28": float(dQ[i28]), "dQ_V30": float(dQ[i30]),
+                    "dQ_V32": float(dQ[i32]),
                     "dqdv_peak_height": pk, "dqdv_peak_V": pkV,
                     "dqdv_V_shift": pkV - ref_peakV,
                     "dqdv_height_change": pk - ref_peak,
+                    "dqdv_area": float(_trapz(seg, vpeak)),         # peak "mass"
+                    "dqdv_fwhm": float((seg >= pk / 2).sum() * dV),   # peak width (broadening)
+                    "Q_at_V30": float(Q[i30]),                        # absolute capacity at 3.0 V
                     "Td_max": float(np.nanmax(Td)), "Td_mean": float(np.nanmean(Td)),
                     "Td_range": float(np.nanmax(Td) - np.nanmin(Td)),
                 }
