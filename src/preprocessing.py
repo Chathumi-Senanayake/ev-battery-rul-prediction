@@ -94,3 +94,29 @@ def basic_clean(df, drop_first_cycle=True):
     if drop_first_cycle:
         df = df[df["cycle"] > 1]
     return df.sort_values(["cell", "cycle"]).reset_index(drop=True)
+
+
+def clean_anomalies(df, cap_max=1.2):
+    """Repair the measurement anomalies found in the data:
+
+      * physically-impossible capacity (QD or QC > cap_max Ah, well above the
+        1.1 Ah nominal) -> drop the row (clear sensor error);
+      * IR <= 0 (resistance sensor dropout) -> set to NaN and forward/back-fill
+        within the cell, so the row's other valid data is kept.
+
+    Capacity spikes that remain (single-cycle glitches < cap_max) are left in
+    place and documented, as tree models tolerate them. Returns (clean_df,
+    report dict)."""
+    df = df.sort_values(["cell", "cycle"]).copy()
+    before = len(df)
+    bad = (df["QD"] > cap_max) | (df["QC"] > cap_max)
+    n_cap = int(bad.sum())
+    df = df[~bad].copy()
+    n_ir = int((df["IR"] <= 0).sum())
+    df["IR"] = df["IR"].where(df["IR"] > 0)
+    df["IR"] = df.groupby("cell")["IR"].ffill().bfill()
+    report = {"impossible_capacity_removed": n_cap,
+              "IR_dropouts_fixed": n_ir,
+              "rows_before_after": (before, len(df)),
+              "cells": int(df["cell"].nunique())}
+    return df.reset_index(drop=True), report
