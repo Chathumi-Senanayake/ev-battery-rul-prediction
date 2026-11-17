@@ -44,11 +44,17 @@ def add_rul(df):
     return df
 
 
-def reached_eol(bat_dict):
-    """Cells whose min QD dropped to EOL (sanity: most should be True)."""
+def reached_eol(bat_dict, tol=0.02):
+    """Cells whose capacity degraded to (near) the 0.88 Ah EOL threshold.
+
+    A lenient tolerance is used on purpose: the canonical merge already drops
+    cells that never degrade, and some cells (notably batch 3) stop right at
+    ~80% capacity, bottoming out around 0.88-0.882 Ah. A strict `<= 0.88` would
+    wrongly discard all of them. `EOL_AH + tol` (0.90 Ah) keeps every real cell
+    while still flagging a pathological flat cell (min QD ~1.0)."""
     out = {}
     for cell, d in bat_dict.items():
-        out[cell] = bool(np.nanmin(d["summary"]["QD"]) <= EOL_AH)
+        out[cell] = bool(np.nanmin(d["summary"]["QD"]) <= EOL_AH + tol)
     return out
 
 
