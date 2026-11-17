@@ -1,0 +1,14 @@
+# large data files - never commit
+data/*.mat
+data/*.pkl
+data/*.parquet
+data/*.csv
+!data/.gitkeep
+
+outputs/*
+!outputs/.gitkeep
+
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+drive/
